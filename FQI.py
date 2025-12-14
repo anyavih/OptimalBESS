@@ -68,7 +68,7 @@ N_ACTIONS = len(ACTIONS)
 
 #Block Bootstrap Sampler
 class BlockBootstrapSampler:
-    def __init__(self, price_csv_path, load_csv_path, renewable_csv_path, zone='HOUSTON'):
+    def __init__(self, price_csv_path, load_csv_path, renewable_csv_path, zone='WEST'):
         self.zone = zone
         self.price_df = None; self.load_df = None; self.ren_df = None
         self.residuals_df = pd.DataFrame()
@@ -135,7 +135,7 @@ class BlockBootstrapSampler:
         return row['price_err'], row['load_err'], row['ren_err']
 
 #Dataset Generation
-def create_historical_forecast_df(price_csv, load_csv, renewable_csv, zone='HOUSTON'):
+def create_historical_forecast_df(price_csv, load_csv, renewable_csv, zone='WEST'):
     logging.info(f"Creating forecast db: {zone}")
     p = pd.read_csv(price_csv); l = pd.read_csv(load_csv); r = pd.read_csv(renewable_csv)
     p_pt = {v: k for k, v in PRICE_ZONE_MAP.items()}.get(zone)
@@ -208,7 +208,7 @@ def generate_batch_dataset(n_transitions, forecast_df, sampler, battery, block_l
                     r_val = -1000.0
                 else:
                     r_val = 0.0 
-                    d_soc = feasible * battery.charge_eff * battery.dt
+                    d_soc = feasible * battery.dt
             #Discharge Logic
             elif mw > 0:
                 feasible = min(mw, battery.max_power_mw, soc)
@@ -227,7 +227,7 @@ def generate_batch_dataset(n_transitions, forecast_df, sampler, battery, block_l
 
 #FQI (Multi-Model)
 class FittedQIteration:
-    def __init__(self, n_actions, gamma=0.90, n_iterations=50, sampler=None, zone='HOUSTON'):
+    def __init__(self, n_actions, gamma=0.90, n_iterations=50, sampler=None, zone='WEST'):
         self.n_actions = n_actions
         self.gamma = gamma
         self.n_iterations = n_iterations
@@ -337,7 +337,7 @@ def run_sanity_checks(agent, battery):
     print_decision("4. Price=20, Spike in 4 hrs (Empty Battery)", s4)
     print("="*60 + "\n")
 
-def run_backtest(agent, test_df, sampler, battery, zone='HOUSTON'):
+def run_backtest(agent, test_df, sampler, battery, zone='WEST'):
     logging.info("--- RUNNING CHRONOLOGICAL BACKTEST ---")
     soc = 0.0
     naive_soc = 0.0
@@ -383,7 +383,7 @@ def run_backtest(agent, test_df, sampler, battery, zone='HOUSTON'):
             feasible = min(abs(mw), battery.max_power_mw, surplus, (battery.capacity_mwh - soc))
             feasible /= battery.charge_eff
             r_val = 0.0 
-            d_soc = feasible * battery.charge_eff * battery.dt
+            d_soc = feasible * battery.dt
             
         elif mw > 0:
             feasible = min(mw, battery.max_power_mw, soc)
@@ -406,7 +406,7 @@ def run_backtest(agent, test_df, sampler, battery, zone='HOUSTON'):
         if naive_action == CHARGE_MAX_IDX:
             naive_feasible = min(abs(ACTION_MW[CHARGE_MAX_IDX]), battery.max_power_mw, surplus, (battery.capacity_mwh - naive_soc))
             naive_feasible /= battery.charge_eff
-            naive_d_soc = naive_feasible * battery.charge_eff * battery.dt 
+            naive_d_soc = naive_feasible * battery.dt 
         elif naive_action == DISCHARGE_MAX_IDX:
             naive_feasible_d = min(ACTION_MW[DISCHARGE_MAX_IDX], battery.max_power_mw, naive_soc)
             naive_profit += (rtm_price - battery.c_deg) * naive_feasible_d * battery.discharge_eff * battery.dt
@@ -439,12 +439,12 @@ if __name__ == "__main__":
     PATH_LOAD = 'load.csv'
     PATH_RENEWABLE = 'zone_renewable_data.csv'
     logging.info("--- INITIALIZING ---")
-    TARGET_ZONE = 'HOUSTON'
-    sampler = BlockBootstrapSampler(PATH_PRICE, PATH_LOAD, PATH_RENEWABLE, zone='HOUSTON')
+    TARGET_ZONE = 'WEST'
+    sampler = BlockBootstrapSampler(PATH_PRICE, PATH_LOAD, PATH_RENEWABLE, zone='WEST')
     battery = Battery()
 
     try:
-        full_df = create_historical_forecast_df(PATH_PRICE, PATH_LOAD, PATH_RENEWABLE, zone='HOUSTON')
+        full_df = create_historical_forecast_df(PATH_PRICE, PATH_LOAD, PATH_RENEWABLE, zone='WEST')
         print("\n" + "="*40)
         print("PRICE DATA SUMMARY STATS")
         print("="*40)
@@ -479,7 +479,7 @@ if __name__ == "__main__":
     batch = generate_batch_dataset(n_transitions=300000, forecast_df=train_df,
     sampler=sampler, battery=battery, block_len=24)
     fqi = FittedQIteration(n_actions=N_ACTIONS, gamma=0.90,
-    n_iterations=100, sampler=sampler, zone='HOUSTON')
+    n_iterations=100, sampler=sampler, zone='WEST')
     fqi.fit(batch)
     #Save the model 
     model_filename = f"fqi_model_{TARGET_ZONE}.joblib"
@@ -487,7 +487,7 @@ if __name__ == "__main__":
 
     run_sanity_checks(fqi, battery)
 
-    results, final_profit = run_backtest(fqi, test_df, sampler, battery, zone='HOUSTON')
+    results, final_profit = run_backtest(fqi, test_df, sampler, battery, zone='WEST')
     print("\n" + "="*60)
     print(f"FINAL RESULTS (Last 3 Months)")
     print("="*60)
